@@ -34,6 +34,7 @@ $app->post('/register', function(Request $request, Response $response)
         return $newresponse->withJson(["message"=>"request body is not appropriate","count"=>$count]);
     }
     $userdata = array( 
+        "Type" =>$request->getParsedBody()['type'],
         "Firstname" =>$request->getParsedBody()['firstname'],
         "Lastname" =>$request->getParsedBody()['lastname'],
         "Gender" => $request->getParsedBody()['gender'],
@@ -52,6 +53,16 @@ $app->post('/register', function(Request $request, Response $response)
         return $newresponse->withJson(['success'=>false, "message"=>$findError]);
         
     }
+    // $stmt = $conn->newPerformScriptCommand('User','registration email');
+    // // $stmt->setScript('registration email',$request->getParsedBody()['email']); 
+    // $script = $stmt->execute();
+    //         if(FileMaker::isError($script)) {
+    //             $findError = 'Find Error: '. $script->getMessage(). ' (' . $script->getCode(). ')';
+    //             $newresponse = $response->withStatus(404);
+        
+    //             return $newresponse->withJson(['success'=>false, "message"=>$findError]);
+                
+    //         }
     $findCommand = $conn->newFindCommand('User');
     $findCommand->addFindCriterion('Telephone', $request->getParsedBody()['telephone']);
     $result=$findCommand->execute();
@@ -75,6 +86,7 @@ $app->post('/register', function(Request $request, Response $response)
     }
  
         else{
+            
             $newresponse = $response->withStatus(200);
         return $newresponse->withJson(['success'=>true, "message"=>"registered successfully", "data"=>$request->getParsedBody()['telephone']]);
         }
@@ -99,6 +111,7 @@ $app->post('/api/users', function(Request $request, Response $response)
     $password = $request->getParsedBody()['password'];
     $findCommand = $fm->newFindCommand('User');
     $findCommand->addFindCriterion('Telephone',$username);
+    $findCommand->setLogicalOperator(FILEMAKER_FIND_AND);
     $findCommand->addFindCriterion('Password', $password);
     $result=$findCommand->execute();   
     if (FileMaker::isError($result)) {
@@ -122,7 +135,7 @@ $app->post('/api/users', function(Request $request, Response $response)
     }
 });
         
-//view a record
+// view a record
 $app->get('/api/users/{id}', function(Request $request, Response $response, array $args)
 { 
 
@@ -157,15 +170,537 @@ $app->get('/api/users/{id}', function(Request $request, Response $response, arra
         $newresponse =  $response->withStatus(404);
         return $newresponse->withJson(["success"=>false]);
         }   
-    $ph=$result->getRecords()[0]->_impl->_fields;
+    $fetcheduserdata=$result->getRecords()[0]->_impl->_fields;
+    $findCommand = $fm->newFindCommand('Address');
+    $findCommand->addFindCriterion('__kf_Id', $Id);
+    $result=$findCommand->execute();
+    if (FileMaker::isError($result)) {
+        if ($result->code = 401) {
+        $findError = 'There are no Records that match that request: '. ' (' .
+        $result->code . ')';
+        } else {
+        $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+        . ')';
+        }
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["success"=>false ,"message"=>$findError]);
+        }   
+    $fetcheduseraddress=$result->getRecords()[0]->_impl->_fields;
     if(count($result->getRecords())==1){
         $newresponse = $response->withStatus(200);
         //print_r($ph);
-        return $newresponse->withJson(['success'=>true, 'data'=>$ph]);
+        return $newresponse->withJson(['success'=>true, 'data'=>$fetcheduserdata+$fetcheduseraddress]);
     } else {
         $newresponse =  $response->withStatus(404);
         return $newresponse->withJson(["success"=>false]);
     }
 });
 
+//get jobs posted by the recruiter
+$app->get('/api/users/{id}/jobs', function(Request $request, Response $response, array $args)
+        {
+            $jwt = new config\jwt();
+            
+            if( $request->hasHeader("Authorization") == false) {
+                $newresponse = $response->withStatus(400);
+                return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+            }
+            $header = $request->getHeader("Authorization");
+            $vars = $header[0];
+            $token = json_decode($jwt->jwttokendecryption($vars));
+            if( $token->verification == "failed") {
+                // header("location: index.html");
+                $newresponse = $response->withStatus(401);
+                return $newresponse->withJson(["message"=>"you are not authorized"]);
+            }
+            $Id = $args['id'];
+            $dbobj = new dbconnection\dbconnection();
+            $fm = $dbobj->connect();
+            $findCommand = $fm->newFindCommand('Job');
+            $findCommand->addFindCriterion('__kf_UserId', $Id);
+            $result=$findCommand->execute();
+            if (FileMaker::isError($result)) {
+                if ($result->code = 401) {
+                $findError = 'There are no Records that match that request: '. ' (' .
+                $result->code . ')';
+                } else {
+                $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+                . ')';
+                }
+                $newresponse =  $response->withStatus(404);
+                return $newresponse->withJson(["success"=>false ,"message"=>$findError]);
+                }
+                $count=count($result->getRecords());
+                for($i=0;$i<$count;$i++){
+                    $fetchedjobdata[$i]=$result->getRecords()[$i]->_impl->_fields;
+                }            
+            if($count>=1){
+                $newresponse = $response->withStatus(200);
+                //print_r($ph);
+                return $newresponse->withJson(['success'=>true, 'data'=>$fetchedjobdata,'count'=>$count]);
+            } else {
+                $newresponse =  $response->withStatus(404);
+                return $newresponse->withJson(["success"=>false]);
+            }
+        });
+
+//Update
+$app->put('/api/users/{id}', function(Request $request, Response $response,array $args) 
+        {  
+            $jwt = new config\jwt();
+            $vars = json_decode($request->getBody());
+            if( $request->hasHeader("Authorization") == false) {
+                $newresponse = $response->withStatus(400);
+                return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+            }
+            $header = $request->getHeader("Authorization");
+            $vars =$header[0];
+            $token = json_decode($jwt->jwttokendecryption($vars));
+            if( $token->verification == "failed") {
+                $newresponse = $response->withStatus(401);
+                return $newresponse->withJson(["message"=>"you are not authorized"]);
+            } 
+            $fm = new dbconnection\dbconnection();
+            $fm = $fm->connect();
+            // $conn->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);
+            $vars = json_decode($request->getBody());
+            $Id = $args['id'];         
+            $Firstname = $request->getParsedBody()['firstname'];
+            $Lastname = $request->getParsedBody()['lastname'];
+            $Email = $request->getParsedBody()['email'];
+            $Gender = $request->getParsedBody()['gender'];;
+            $Dob = $request->getParsedBody()['date'];  
+            $Doorno = $request->getParsedBody()['doorno'];
+            $Streetname = $request->getParsedBody()['streetname'];
+            $City = $request->getParsedBody()['city'];
+            $State = $request->getParsedBody()['state'];
+            $Postalcode = $request->getParsedBody()['postalcode'];
+            $findCommand = $fm->newFindCommand('User');
+            $findCommand->addFindCriterion('___kp_UserId', $Id);
+            $result=$findCommand->execute(); 
+            $findCommand=$result->getRecords()[0];
+            $findCommand->setField('Firstname', $Firstname);
+            $findCommand->setField('Lastname', $Lastname);
+            $findCommand->setField('Gender', $Gender);
+            $findCommand->setField('Dob', $Dob);
+            $findCommand->setField('Email', $Email);
+            $result = $findCommand->commit();
+            $findCommand = $fm->newFindCommand('Address');
+            $findCommand->addFindCriterion('__kf_Id', $Id);
+            $result=$findCommand->execute(); 
+            $findCommand=$result->getRecords()[0];
+            $findCommand->setField('Doorno', $Doorno);
+            $findCommand->setField('Streetname', $Streetname);
+            $findCommand->setField('City', $City);
+            $findCommand->setField('State', $State);
+            $findCommand->setField('Postalcode', $Postalcode);
+            $result = $findCommand->commit();
+            $newresponse = $response->withStatus(200);
+            return $newresponse->withJson(['success'=>true]);
+});
+
+//view job  applications
+$app->get('/api/users/{id}/jobs/applications/{jobid}', function(Request $request, Response $response, array $args){
+    $jwt = new config\jwt();
+    $vars = json_decode($request->getBody());
+    if( $request->hasHeader("Authorization") == false) {
+        $newresponse = $response->withStatus(400);
+        return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+    }
+    $header = $request->getHeader("Authorization");
+    $vars =$header[0];
+    $token = json_decode($jwt->jwttokendecryption($vars));
+    if( $token->verification == "failed") {
+        $newresponse = $response->withStatus(401);
+        return $newresponse->withJson(["message"=>"you are not authorized"]);
+    }
+    $id = $args['id'];
+    $jobid = $args['jobid'];
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $findCommand = $fm->newFindCommand('Application');
+    $findCommand->addFindCriterion('__kf_JobId', $jobid);
+    $result=$findCommand->execute();
+    if (FileMaker::isError($result)) {
+        if ($result->code = 401) {
+        $findError = 'There are no Records that match that request: '. ' (' .
+        $result->code . ')';
+        } else {
+        $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+        . ')';
+        }
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["success"=>false ,"message"=>$findError]);
+        }
+        $count=count($result->getRecords());
+        for($i=0;$i<$count;$i++){
+            $fetchedapplicationdata[$i]=$result->getRecords()[$i]->_impl->_fields['__kf_UserId'][0];
+        }
+        for($i=0;$i<$count;$i++)
+        {
+            $findCommand = $fm->newFindCommand('User');
+            $findCommand->addFindCriterion('___kp_UserId',$fetchedapplicationdata[$i]);
+            $result=$findCommand->execute(); 
+            if (FileMaker::isError($result)) {
+            if ($result->code = 401) {
+            $findError = 'There are no Records that match that request: '. ' (' .
+            $result->code . ')';
+            } else {
+            $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+            . ')';
+            }
+            $newresponse =  $response->withStatus(404);
+            return $newresponse->withJson(["success"=>false]);
+            }   
+            $fetcheduserdata[$i]=$result->getRecords()[0]->_impl->_fields;
+            $__kf_Id=$result->getRecords()[0]->_impl->_fields['___kp_UserId'][0];
+            $findCommand = $fm->newFindCommand('Address');
+            $findCommand->addFindCriterion('__kf_Id', $__kf_Id);
+            $result=$findCommand->execute();
+            if (FileMaker::isError($result)) {
+            if ($result->code = 401) {
+            $findError = 'There are no Records that match that request: '. ' (' .
+            $result->code . ')';
+            } else {
+            $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+            . ')';
+            }
+            $newresponse =  $response->withStatus(404);
+            return $newresponse->withJson(["success"=>false ,"message"=>$findError]);
+        }   
+        $fetcheduseraddress[$i]=$result->getRecords()[0]->_impl->_fields;
+        $fetchedusercompletedata[$i]=$fetcheduserdata[$i]+$fetcheduseraddress[$i];
+        }
+        if($count>=1){
+        $newresponse = $response->withStatus(200);
+        return $newresponse->withJson(['success'=>true, 'data'=>$fetchedusercompletedata,'count'=>$count]);
+    } else {
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["success"=>false]);
+    }  
+});
+
+//post a job
+$app->post('/api/users/{id}/addjob', function(Request $request, Response $response, array $args)
+{   
+    $jwt = new config\jwt();
+    $vars = json_decode($request->getBody());
+    if( $request->hasHeader("Authorization") == false) {
+        $newresponse = $response->withStatus(400);
+        return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+    }
+    $header = $request->getHeader("Authorization");
+    $vars =$header[0];
+    $token = json_decode($jwt->jwttokendecryption($vars));
+    if( $token->verification == "failed") {
+        $newresponse = $response->withStatus(401);
+        return $newresponse->withJson(["message"=>"you are not authorized"]);
+    }
+    $dbobj = new dbconnection\dbconnection();   
+    $conn = $dbobj->connect();
+    // $conn->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);
+    $vars = json_decode($request->getBody());
+    $count = 0;    
+    $id = $args['id'];
+    $jobdata = array( 
+        "__kf_UserId" => $id,
+        "Company" => $request->getParsedBody()['Company'],
+        "DriveDate" => $request->getParsedBody()['DriveDate'],
+        "Drivedetails" =>$request->getParsedBody()['Drivedetails'],
+        "CompanyWebsite" => $request->getParsedBody()['CompanyWebsite']
+    );
+    $stmt = $conn->createRecord('Job', $jobdata);
+    $register = $stmt->commit();
+    if (FileMaker::isError($register)) {
+        $findError = 'Find Error: '. $register->getMessage(). ' (' . $register->getCode(). ')';
+        $newresponse = $response->withStatus(404);
+        return $newresponse->withJson(['success'=>false, "message"=>$findError]);
+        
+    }
+    // $findCommand = $conn->newFindCommand('Job');
+    // $findCommand->addFindCriterion('Company', $request->getParsedBody()['Company']);
+    // $findCommand->addFindCriterion('DriveDate', $request->getParsedBody()['DriveDate']);
+    // $findCommand->addFindCriterion('Drivedetails', $request->getParsedBody()['Drivedetails']);
+    // $findCommand->addFindCriterion('CompanyWebsite', $request->getParsedBody()['CompanyWebsite']);
+    // $result=$findCommand->execute();
+    // $id=$result->getRecords()[0]->_impl->_fields['___kp_JobId'][0];
+    // $address = array(
+    //     "__kf_JobId" => "$id",
+    //     "Doorno" => $request->getParsedBody()['Doorno'],
+    //     "Streetname" => $request->getParsedBody()['Streetname'],
+    //     "City" =>$request->getParsedBody()['City'],
+    //     "State" =>$request->getParsedBody()['State'],
+    //     "Postalcode" =>$request->getParsedBody()['Postalcode']
+    // );
+    // $stmt = $conn->createRecord('Address', $address);
+    // $add = $stmt->commit();
+    // if(FileMaker::isError($add)) {
+    //     $findError = 'Find Error: '. $add->getMessage(). ' (' . $add->getCode(). ')';
+    //     $newresponse = $response->withStatus(404);
+
+    //     return $newresponse->withJson(['success'=>false, "message"=>$findError]);
+        
+    // }
+ 
+    else{
+        $newresponse = $response->withStatus(200);
+    return $newresponse->withJson(['success'=>true, "message"=>"added successfully", "data"=>$request->getParsedBody()['Company']]);
+    }
+    
+});
+
+
+//view applied jobs
+$app->get('/api/users/{id}/appliedjobs', function(Request $request, Response $response, array $args){
+    $jwt = new config\jwt();
+    $vars = json_decode($request->getBody());
+    if( $request->hasHeader("Authorization") == false) {
+        $newresponse = $response->withStatus(400);
+        return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+    }
+    $header = $request->getHeader("Authorization");
+    $vars =$header[0];
+    $token = json_decode($jwt->jwttokendecryption($vars));
+    if( $token->verification == "failed") {
+        $newresponse = $response->withStatus(401);
+        return $newresponse->withJson(["message"=>"you are not authorized"]);
+    }
+    $id = $args['id'];
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $findCommand = $fm->newFindCommand('Application');
+    $findCommand->addFindCriterion('__kf_UserId', $id);
+    $result=$findCommand->execute();
+    if (FileMaker::isError($result)) {
+        if ($result->code = 401) {
+        $findError = 'There are no Records that match that request: '. ' (' .
+        $result->code . ')';
+        } else {
+        $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->getcode()
+        . ')';
+        }
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["success"=>false ,"message"=>$findError]);
+        }
+        $count=count($result->getRecords());
+        for($i=0;$i<$count;$i++){
+            $fetchedapplicationdata[$i]=$result->getRecords()[$i]->_impl->_fields['__kf_JobId'][0];
+        }
+        for($i=0;$i<$count;$i++)
+        {
+            $findCommand = $fm->newFindCommand('Job');
+            $findCommand->addFindCriterion('___kp_JobId',$fetchedapplicationdata[$i]);
+            $result=$findCommand->execute(); 
+            if (FileMaker::isError($result)) {
+            if ($result->code = 401) {
+            $findError = 'There are no Records that match that request: '. ' (' .
+            $result->code . ')';
+            } else {
+            $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+            . ')';
+            }
+            $newresponse =  $response->withStatus(404);
+            return $newresponse->withJson(["success"=>false]);
+            }   
+            $fetchedjobdata[$i]=$result->getRecords()[0]->_impl->_fields;
+            $__kf_JobId=$result->getRecords()[0]->_impl->_fields['___kp_JobId'][0];
+            $findCommand = $fm->newFindCommand('Address');
+            $findCommand->addFindCriterion('__kf_JobId', $__kf_JobId);
+            $result=$findCommand->execute();
+            if (FileMaker::isError($result)) {
+            if ($result->code = 401) {
+            $findError = 'There are no Records that match that request: '. ' (' .
+            $result->code . ')';
+            } else {
+            $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+            . ')';
+            }
+            $newresponse =  $response->withStatus(404);
+            return $newresponse->withJson(["success"=>false ,"message"=>$findError]);
+        }   
+        $fetcheduseraddress[$i]=$result->getRecords()[0]->_impl->_fields;
+        $fetchedjobcompletedata[$i]=$fetchedjobdata[$i]+$fetcheduseraddress[$i];
+        }
+        if($count>=1){
+        $newresponse = $response->withStatus(200);
+        return $newresponse->withJson(['success'=>true, 'data'=>$fetchedjobcompletedata,'count'=>$count]);
+    } else {
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["success"=>false]);
+    }  
+});
+
+//retieve job application
+$app->delete('/api/users/{id}/appliedjobs/{jobid}', function(Request $request, Response $response, array $args){
+    $jwt = new config\jwt();
+    $vars = json_decode($request->getBody());
+    if( $request->hasHeader("Authorization") == false) {
+        $newresponse = $response->withStatus(400);
+        return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+    }
+    $header = $request->getHeader("Authorization");
+    $vars =$header[0];
+    $token = json_decode($jwt->jwttokendecryption($vars));
+    if( $token->verification == "failed") {
+        $newresponse = $response->withStatus(401);
+        return $newresponse->withJson(["message"=>"you are not authorized"]);
+    }
+    $id = $args['id'];
+    $jobid = $args['jobid'];
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $findCommand = $fm->newFindCommand('Application');
+    $findCommand->addFindCriterion('__kf_UserId', $id);
+    $findCommand->addFindCriterion('__kf_JobId',$jobid);
+    $result=$findCommand->execute(); 
+    if (FileMaker::isError($result)) {
+        if ($result->code = 401) {
+        $findError = 'There are no Records that match that request: '. ' (' .
+        $result->code . ')';
+        } else {
+        $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+        . ')';
+        }
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["success"=>false]);
+        }   
+    $deletecommand=$result->getRecords()[0];
+    $deletecommand->delete();
+    if(count($result->getRecords())==1){
+        $newresponse = $response->withStatus(200);
+        return $newresponse->withJson(['success'=>true,'message'=>'record deleted successfully']);
+    } else {
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["success"=>false]);
+    }
+});
+
+//retrieve posted job
+$app->delete('/api/users/{jobid}', function(Request $request, Response $response, array $args){
+    $jwt = new config\jwt();
+    $vars = json_decode($request->getBody());
+    if( $request->hasHeader("Authorization") == false) {
+        $newresponse = $response->withStatus(400);
+        return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+    }
+    $header = $request->getHeader("Authorization");
+    $vars =$header[0];
+    $token = json_decode($jwt->jwttokendecryption($vars));
+    if( $token->verification == "failed") {
+        $newresponse = $response->withStatus(401);
+        return $newresponse->withJson(["message"=>"you are not authorized"]);
+    }
+    $jobid = $args['jobid'];
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $findCommand = $fm->newFindCommand('Job');
+    $findCommand->addFindCriterion('___kp_JobId',$jobid);
+    $result=$findCommand->execute(); 
+    if (FileMaker::isError($result)) {
+        if ($result->code = 401) {
+        $findError = 'There are no Records that match that request: '. ' (' .
+        $result->code . ')';
+        } else {
+        $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+        . ')';
+        }
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["succes"=>false,"message"=>$findError]);
+        }   
+    $deletecommand=$result->getRecords()[0];
+    $deletecommand->delete();
+    if(count($result->getRecords())==1){
+        $newresponse = $response->withStatus(200);
+        return $newresponse->withJson(['success'=>true,'message'=>'record deleted successfully']);
+    } else {
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["success"=>false]);
+    }
+});
+
+//view matching jobs
+$app->get('/api/users/{id}/matchingjobs/', function(Request $request, Response $response, array $args)
+{ 
+
+    $jwt = new config\jwt();
+            
+            if( $request->hasHeader("Authorization") == false) {
+                $newresponse = $response->withStatus(400);
+                return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+            }
+            $header = $request->getHeader("Authorization");
+            $vars = $header[0];
+            $token = json_decode($jwt->jwttokendecryption($vars));
+            if( $token->verification == "failed") {
+                // header("location: index.html");
+                $newresponse = $response->withStatus(401);
+                return $newresponse->withJson(["message"=>"you are not authorized"]);
+            }
+    $Id = $args['id'];
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $findCommand = $fm->newFindAllCommand('Job');
+    $result=$findCommand->execute(); 
+    if (FileMaker::isError($result)) {
+        if ($result->code = 401) {
+        $findError = 'There are no Records that match that request: '. ' (' .
+        $result->code . ')';
+        } else {
+        $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+        . ')';
+        }
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["success"=>false,"message"=>$findError]);
+        }   
+        $count = count($result->getRecords());
+        $fetchedjobdata[0] = 'There are no matched jobs';
+        $j=0;
+        for($i=0;$i<$count;$i++){
+            $jobid = $result->getRecords()[$i]->_impl->_fields['___kp_JobId'][0];
+            $findCommand = $fm->newFindCommand('Application');
+            $findCommand->addFindCriterion('__kf_JobId',$jobid);
+            $findCommand->addFindCriterion('__kf_UserId', $Id);
+            $findCommand->setLogicalOperator(FILEMAKER_FIND_AND);
+            $check=$findCommand->execute(); 
+            if (FileMaker::isError($check)) {
+                if ($result->code = 401) {
+                $findError = 'There are no Records that match that request: '. ' (' .
+                $result->code . ')';
+                $fetchedjobdata[$j]=$result->getRecords()[$i]->_impl->_fields;
+                $j++;
+                
+                
+                } else {
+                break;
+                }
+            }   
+            continue;   
+        }
+        $newresponse = $response->withStatus(200);
+    return $newresponse->withJson(["success"=>true, "data"=>$fetchedjobdata]);
+});
+
+//apply job
+$app->post('/api/users/{id}/matchingjobs/applyjob/{jobid}', function(Request $request, Response $response, array $args)
+{ 
+    $Id = $args['id'];
+    $jobid = $args['jobid'];
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $userdata = array( 
+        "__kf_JobId"=>$jobid,
+        "__kf_UserId"=>$Id
+    );
+    $stmt = $fm->createRecord('Application', $userdata);
+    $apply = $stmt->commit();
+    if (FileMaker::isError($apply)) {
+        $findError = 'Find Error: '. $apply->getMessage(). ' (' . $apply->getCode(). ')';
+        $newresponse = $response->withStatus(404);
+        return $newresponse->withJson(['success'=>false, "message"=>$findError]);        
+    }
+    else{
+        $newresponse = $response->withStatus(200);
+        return $newresponse->withJson(['success'=>true, "message"=>"Applied"]);
+    }
+});
 $app->run();

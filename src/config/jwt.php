@@ -1,4 +1,5 @@
 <?php
+
 namespace config;
 
 use \Firebase\JWT\JWT as token; 
