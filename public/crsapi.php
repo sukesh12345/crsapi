@@ -402,6 +402,7 @@ $app->post('/api/users/{id}/addjob', function(Request $request, Response $respon
     $vars = json_decode($request->getBody());
     $count = 0;    
     $id = $args['id'];
+    $tagarray = $request->getParsedBody()['array'];
     $jobdata = array( 
         "__kf_UserId" => $id,
         "Company" => $request->getParsedBody()['Company'],
@@ -443,6 +444,30 @@ $app->post('/api/users/{id}/addjob', function(Request $request, Response $respon
     // }
  
     else{
+        $findCommand = $conn->newFindCommand('Job');
+        $findCommand->addFindCriterion('Company', $request->getParsedBody()['Company']);
+        $findCommand->addFindCriterion('DriveDate', $request->getParsedBody()['DriveDate']);
+        $findCommand->addFindCriterion('Drivedetails', $request->getParsedBody()['Drivedetails']);
+        $findCommand->addFindCriterion('CompanyWebsite', $request->getParsedBody()['CompanyWebsite']);
+        $result=$findCommand->execute();
+        $id=$result->getRecords()[0]->_impl->_fields['___kp_JobId'][0];
+        $tagcount=sizeof($tagarray);
+        for($i=0;$i<$tagcount;$i++){
+            $tag = array(
+                "__kf_Id"=>$id,
+                "TagName" =>$tagarray[$i],
+                "Type" =>"job"
+            );
+             $stmt = $conn->createRecord('Tags', $tag);
+             $add = $stmt->commit();
+            if(FileMaker::isError($add)) {
+                $findError = 'Find Error: '. $add->getMessage(). ' (' . $add->getCode(). ')';
+                $newresponse = $response->withStatus(404);
+
+            return $newresponse->withJson(['success'=>false, "message"=>$findError]);
+        
+        }
+        }
         $newresponse = $response->withStatus(200);
     return $newresponse->withJson(['success'=>true, "message"=>"added successfully", "data"=>$request->getParsedBody()['Company']]);
     }
@@ -503,23 +528,23 @@ $app->get('/api/users/{id}/appliedjobs', function(Request $request, Response $re
             return $newresponse->withJson(["success"=>false]);
             }   
             $fetchedjobdata[$i]=$result->getRecords()[0]->_impl->_fields;
-            $__kf_JobId=$result->getRecords()[0]->_impl->_fields['___kp_JobId'][0];
-            $findCommand = $fm->newFindCommand('Address');
-            $findCommand->addFindCriterion('__kf_JobId', $__kf_JobId);
-            $result=$findCommand->execute();
-            if (FileMaker::isError($result)) {
-            if ($result->code = 401) {
-            $findError = 'There are no Records that match that request: '. ' (' .
-            $result->code . ')';
-            } else {
-            $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
-            . ')';
-            }
-            $newresponse =  $response->withStatus(404);
-            return $newresponse->withJson(["success"=>false ,"message"=>$findError]);
-        }   
-        $fetcheduseraddress[$i]=$result->getRecords()[0]->_impl->_fields;
-        $fetchedjobcompletedata[$i]=$fetchedjobdata[$i]+$fetcheduseraddress[$i];
+        //     $__kf_JobId=$result->getRecords()[0]->_impl->_fields['___kp_JobId'][0];
+        //     $findCommand = $fm->newFindCommand('Address');
+        //     $findCommand->addFindCriterion('__kf_JobId', $__kf_JobId);
+        //     $result=$findCommand->execute();
+        //     if (FileMaker::isError($result)) {
+        //     if ($result->code = 401) {
+        //     $findError = 'There are no Records that match that request: '. ' (' .
+        //     $result->code . ')';
+        //     } else {
+        //     $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+        //     . ')';
+        //     }
+        //     $newresponse =  $response->withStatus(404);
+        //     return $newresponse->withJson(["success"=>false ,"message"=>$findError]);
+        // }   
+        // $fetcheduseraddress[$i]=$result->getRecords()[0]->_impl->_fields;
+        $fetchedjobcompletedata[$i]=$fetchedjobdata[$i];//fetchuseraddress must be added later
         }
         if($count>=1){
         $newresponse = $response->withStatus(200);
@@ -621,7 +646,6 @@ $app->delete('/api/users/{jobid}', function(Request $request, Response $response
 //view matching jobs
 $app->get('/api/users/{id}/matchingjobs/', function(Request $request, Response $response, array $args)
 { 
-
     $jwt = new config\jwt();
             
             if( $request->hasHeader("Authorization") == false) {
@@ -653,6 +677,7 @@ $app->get('/api/users/{id}/matchingjobs/', function(Request $request, Response $
         return $newresponse->withJson(["success"=>false,"message"=>$findError]);
         }   
         $count = count($result->getRecords());
+        
         $fetchedjobdata[0] = 'There are no matched jobs';
         $j=0;
         for($i=0;$i<$count;$i++){
@@ -703,4 +728,268 @@ $app->post('/api/users/{id}/matchingjobs/applyjob/{jobid}', function(Request $re
         return $newresponse->withJson(['success'=>true, "message"=>"Applied"]);
     }
 });
+
+//stateslist
+$app->get('/statesname',function(Request $request, Response $response, array $args){
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $findCommand = $fm->newFindAllCommand('states');
+    $result=$findCommand->execute(); 
+    if (FileMaker::isError($result)) {
+        if ($result->code = 401) {
+        $findError = 'There are no Records that match that request: '. ' (' .
+        $result->code . ')';
+        } else {
+        $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+        . ')';
+        }
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["succes"=>false,"message"=>$findError]);
+        }   
+        $count=count($result->getRecords());
+        for($i=0;$i<$count;$i++){
+            $fetchedstates[$i]=$result->getRecords()[$i]->_impl->_fields['statesname'][0];
+        }            
+        if($count>=1){
+            $newresponse = $response->withStatus(200);
+            //print_r($ph);
+            return $newresponse->withJson(['success'=>true, 'data'=>$fetchedstates,'count'=>$count]);
+        } 
+});
+
+//skillslist
+$app->get('/allskills',function(Request $request, Response $response, array $args){
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $findCommand = $fm->newFindAllCommand('TagMaster');
+    $result=$findCommand->execute(); 
+    if (FileMaker::isError($result)) {
+        if ($result->code = 401) {
+        $findError = 'There are no Records that match that request: '. ' (' .
+        $result->code . ')';
+        } else {
+        $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+        . ')';
+        }
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["succes"=>false,"message"=>$findError]);
+        }   
+        $count=count($result->getRecords());
+        for($i=0;$i<$count;$i++){
+            $fetchedskills[$i]=$result->getRecords()[$i]->_impl->_fields['TagName'][0];
+        }            
+        if($count>=1){
+            $newresponse = $response->withStatus(200);
+            //print_r($ph);
+            return $newresponse->withJson(['success'=>true, 'data'=>$fetchedskills,'count'=>$count]);
+        } 
+});
+
+
+//add skill
+$app->post('/api/users/{id}/addskill',function(Request $request,Response $response,array $args){
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $Id = $args['id'];
+    $skill = array(
+        "__kf_Id" =>$Id,
+        "TagName" =>$request->getParsedBody()['skill'],
+        "Type" => 'student'
+    );
+    $stmt = $fm->createRecord('Tags', $skill);
+    $addskill = $stmt->commit();
+    if(FileMaker::isError($addskill)) {
+        $findError = 'Find Error: '. $addskill->getMessage(). ' (' . $addskill->getCode(). ')';
+        $newresponse = $response->withStatus(404);
+        return $newresponse->withJson(['success'=>false, "message"=>$findError]);
+    }
+        else{       
+            $newresponse = $response->withStatus(200);
+            return $newresponse->withJson(['success'=>true, "message"=>"added successfully", "data"=>$request->getParsedBody()['skill']]);
+        }
+});
+
+//delete skill
+$app->delete('/api/users/{id}/removeskill{skill}',function(Request $request,Response $response,array $args){
+    $id = $args['id'];
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $skill = $args['skill'];
+    $findCommand = $fm->newFindCommand('Tags');
+    $findCommand->addFindCriterion('TagName',$skill);
+    $findCommand->addFindCriterion('__kf_Id',$id);
+    $result=$findCommand->execute(); 
+    if (FileMaker::isError($result)) {
+        if ($result->code = 401) {
+        $findError = 'There are no Records that match that request: '. ' (' .
+        $result->code . ')';
+        } else {
+        $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+        . ')';
+        }
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["succes"=>false,"message"=>$findError]);
+        }   
+    $deletecommand=$result->getRecords()[0];
+    $deletecommand->delete();
+    if(count($result->getRecords())==1){
+        $newresponse = $response->withStatus(200);
+        return $newresponse->withJson(['success'=>true,'message'=>'record deleted successfully']);
+    } else {
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["success"=>false,"data"=>$skill]);
+    }
+});
+
+
+
+//get realted skills
+$app->get('/api/users/{id}/skills',function(Request $request,Response $response,array $args){
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $Id = $args['id'];
+    $findCommand = $fm->newFindCommand('Tags');
+    $findCommand->addFindCriterion('__kf_Id',$Id);
+    $result=$findCommand->execute();
+    if (FileMaker::isError($result)) {
+        if ($result->code = 401) {
+        $findError = 'There are no Records that match that request: '. ' (' .
+        $result->code . ')';
+        } else {
+        $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+        . ')';
+        }
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["succes"=>false,"message"=>$findError]);
+        }   
+        $count=count($result->getRecords());
+        for($i=0;$i<$count;$i++){
+            $fetchedtags[$i]=$result->getRecords()[$i]->_impl->_fields['TagName'][0];
+        }            
+        if($count>=1){
+            $newresponse = $response->withStatus(200);
+            //print_r($ph);
+            return $newresponse->withJson(['success'=>true, 'data'=>$fetchedtags,'count'=>$count]);
+        } 
+});
+
+//viewmatching jobs
+$app->post('/api/users/{id}/matchingjobs/', function(Request $request, Response $response, array $args)
+{ 
+    // $jwt = new config\jwt();
+            
+    //         if( $request->hasHeader("Authorization") == false) {
+    //             $newresponse = $response->withStatus(400);
+    //             return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+    //         }
+    //         $header = $request->getHeader("Authorization");
+    //         $vars = $header[0];
+    //         $token = json_decode($jwt->jwttokendecryption($vars));
+    //         if( $token->verification == "failed") {
+    //             // header("location: index.html");
+    //             $newresponse = $response->withStatus(401);
+    //             return $newresponse->withJson(["message"=>"you are not authorized"]);
+    //         }
+    $Id = $args['id'];
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $findCommand = $fm->newFindCommand('Tags');
+    $findCommand->addFindCriterion('__kf_Id',$Id);
+    $findCommand->setLogicalOperator(FILEMAKER_FIND_AND);
+    $findCommand->addFindCriterion('Type','student');
+    $result=$findCommand->execute(); 
+    if (FileMaker::isError($result)) {
+        if ($result->code = 401) {
+        $findError = 'There are no Records that match that request: '. ' (' .
+        $result->code . ')';
+        } else {
+        $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+        . ')';
+        }
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["success"=>false,"message"=>$findError]);
+        }   
+        $count = count($result->getRecords());
+        for($i=0;$i<$count;$i++){
+            $fetchedtags[$i]=$result->getRecords()[$i]->_impl->_fields['TagName'][0];
+        }
+
+        $fetchedjobdata[0] = 'There are no matched jobs';
+        $j=0;
+        for($i=0;$i<sizeof($fetchedtags);$i++){ 
+            $tagname = $fetchedtags[$i];
+            // print_r($tagname);
+            $findCommand = $fm->newFindCommand('Tags');
+            $findCommand->addFindCriterion('TagName',$tagname);
+            $findCommand->setLogicalOperator(FILEMAKER_FIND_AND);
+            $findCommand->addFindCriterion('Type','job');
+            $check=$findCommand->execute(); 
+            if (FileMaker::isError($check)) {
+                        if ($result->code = 401) {
+                        $findError = 'There are no Records that match that request: '. ' (' .
+                        $result->code . ')';                
+                        }       
+                    }   
+             else {
+                for($k=0;$k<count($check->getRecords());$k++){
+                $fetchedjobids[$j]=$check->getRecords()[$k]->_impl->_fields['__kf_Id'][0];
+                        $j++;
+                        }
+                        continue;
+                    }   
+        }
+        $fetchedjobids = array_values(array_unique($fetchedjobids));
+
+        $j=0;
+        for($i=0;$i<sizeof($fetchedjobids);$i++){
+            $jobid = $fetchedjobids[$i];
+            $findCommand = $fm->newFindCommand('Application');
+            $findCommand->addFindCriterion('__kf_JobId',$jobid);
+            $findCommand->addFindCriterion('__kf_UserId', $Id);
+            $findCommand->setLogicalOperator(FILEMAKER_FIND_AND);
+            $check=$findCommand->execute(); 
+            if (FileMaker::isError($check)) {
+                if ($check->code = 401) {
+                    $findError = 'There are no Records that match that request: '. ' (' .
+                    $check->code . ')';
+                    $getjob = $fm->newFindCommand('Job');
+                    $getjob->addFindCriterion('___kp_JobId',$jobid);
+                    $getjobresult= $getjob->execute();
+                    $fetchedjobdata[$j]=$getjobresult->getRecords()[0]->_impl->_fields;
+                            $j++;
+                            } else {
+                            break;
+                            }
+                        }   
+                        continue;   
+            }
+            
+        // for($i=0;$i<$count;$i++){
+        //     $jobid = $fetchedjobids[$i];
+        //     $findCommand = $fm->newFindCommand('Application');
+        //     $findCommand->addFindCriterion('__kf_JobId',$jobid);
+        //     $findCommand->addFindCriterion('__kf_UserId', $Id);
+        //     $findCommand->setLogicalOperator(FILEMAKER_FIND_AND);
+        //     $check=$findCommand->execute(); 
+        //     if (FileMaker::isError($check)) {
+        //         if ($check->code = 401) {
+        //         $findError = 'There are no Records that match that request: '. ' (' .
+        //         $$check->code . ')';
+        //         $fetchedjobdata[$j]=$result->getRecords()[$i]->_impl->_fields;
+        //         $j++;
+                
+                
+        //         } else {
+        //         break;
+        //         }
+        //     }   
+        //     continue;   
+        // }
+       
+        $newresponse = $response->withStatus(200);
+    return $newresponse->withJson(["success"=>true, "data"=>$fetchedjobdata]);
+});
+
 $app->run();
+
+
