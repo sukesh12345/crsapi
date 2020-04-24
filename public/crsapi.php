@@ -29,12 +29,11 @@ $app->post('/register', function(Request $request, Response $response)
     foreach($vars as $key) {
         $count++;
     }
-    if( $count<13) {
+    if( $count<14) {
         $newresponse = $response->withStatus(400);
         return $newresponse->withJson(["message"=>"request body is not appropriate","count"=>$count]);
     }
     $userdata = array( 
-        "Type" =>$request->getParsedBody()['type'],
         "Firstname" =>$request->getParsedBody()['firstname'],
         "Lastname" =>$request->getParsedBody()['lastname'],
         "Gender" => $request->getParsedBody()['gender'],
@@ -300,7 +299,7 @@ $app->put('/api/users/{id}', function(Request $request, Response $response,array
 });
 
 //view job  applications
-$app->get('/api/users/{id}/jobs/applications/{jobid}', function(Request $request, Response $response, array $args){
+$app->get('/api/users/{id}/jobs/applications/{jobid}/{status}', function(Request $request, Response $response, array $args){
     $jwt = new config\jwt();
     $vars = json_decode($request->getBody());
     if( $request->hasHeader("Authorization") == false) {
@@ -316,10 +315,12 @@ $app->get('/api/users/{id}/jobs/applications/{jobid}', function(Request $request
     }
     $id = $args['id'];
     $jobid = $args['jobid'];
+    $status = $args['status'];
     $dbobj = new dbconnection\dbconnection();
     $fm = $dbobj->connect();
     $findCommand = $fm->newFindCommand('Application');
     $findCommand->addFindCriterion('__kf_JobId', $jobid);
+    $findCommand->addFindCriterion('Status',$status);
     $result=$findCommand->execute();
     if (FileMaker::isError($result)) {
         if ($result->code = 401) {
@@ -408,7 +409,8 @@ $app->post('/api/users/{id}/addjob', function(Request $request, Response $respon
         "Company" => $request->getParsedBody()['Company'],
         "DriveDate" => $request->getParsedBody()['DriveDate'],
         "Drivedetails" =>$request->getParsedBody()['Drivedetails'],
-        "CompanyWebsite" => $request->getParsedBody()['CompanyWebsite']
+        "CompanyWebsite" => $request->getParsedBody()['CompanyWebsite'],
+        "CompanyLocation" => $request->getParsedBody()['CompanyLocation']
     );
     $stmt = $conn->createRecord('Job', $jobdata);
     $register = $stmt->commit();
@@ -475,8 +477,8 @@ $app->post('/api/users/{id}/addjob', function(Request $request, Response $respon
 });
 
 
-//view applied jobs
-$app->get('/api/users/{id}/appliedjobs', function(Request $request, Response $response, array $args){
+//view applied jobs 
+$app->get('/api/users/{id}/appliedjobs/{status}', function(Request $request, Response $response, array $args){
     $jwt = new config\jwt();
     $vars = json_decode($request->getBody());
     if( $request->hasHeader("Authorization") == false) {
@@ -491,10 +493,12 @@ $app->get('/api/users/{id}/appliedjobs', function(Request $request, Response $re
         return $newresponse->withJson(["message"=>"you are not authorized"]);
     }
     $id = $args['id'];
+    $status = $args['status'];
     $dbobj = new dbconnection\dbconnection();
     $fm = $dbobj->connect();
     $findCommand = $fm->newFindCommand('Application');
     $findCommand->addFindCriterion('__kf_UserId', $id);
+    $findCommand->addFindCriterion('Status',$status);
     $result=$findCommand->execute();
     if (FileMaker::isError($result)) {
         if ($result->code = 401) {
@@ -644,7 +648,7 @@ $app->delete('/api/users/{jobid}', function(Request $request, Response $response
 });
 
 //view matching jobs
-$app->get('/api/users/{id}/matchingjobs/', function(Request $request, Response $response, array $args)
+$app->post('/api/users/{id}/matchingjobs/', function(Request $request, Response $response, array $args)
 { 
     $jwt = new config\jwt();
             
@@ -788,6 +792,20 @@ $app->get('/allskills',function(Request $request, Response $response, array $arg
 
 //add skill
 $app->post('/api/users/{id}/addskill',function(Request $request,Response $response,array $args){
+    $jwt = new config\jwt();
+            
+    if( $request->hasHeader("Authorization") == false) {
+        $newresponse = $response->withStatus(400);
+        return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+    }
+    $header = $request->getHeader("Authorization");
+    $vars = $header[0];
+    $token = json_decode($jwt->jwttokendecryption($vars));
+    if( $token->verification == "failed") {
+        // header("location: index.html");
+        $newresponse = $response->withStatus(401);
+        return $newresponse->withJson(["message"=>"you are not authorized"]);
+    }
     $dbobj = new dbconnection\dbconnection();
     $fm = $dbobj->connect();
     $Id = $args['id'];
@@ -810,7 +828,21 @@ $app->post('/api/users/{id}/addskill',function(Request $request,Response $respon
 });
 
 //delete skill
-$app->delete('/api/users/{id}/removeskill{skill}',function(Request $request,Response $response,array $args){
+$app->delete('/api/users/{id}/removeskill/{skill}',function(Request $request,Response $response,array $args){
+    $jwt = new config\jwt();
+            
+    if( $request->hasHeader("Authorization") == false) {
+        $newresponse = $response->withStatus(400);
+        return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+    }
+    $header = $request->getHeader("Authorization");
+    $vars = $header[0];
+    $token = json_decode($jwt->jwttokendecryption($vars));
+    if( $token->verification == "failed") {
+        // header("location: index.html");
+        $newresponse = $response->withStatus(401);
+        return $newresponse->withJson(["message"=>"you are not authorized"]);
+    }
     $id = $args['id'];
     $dbobj = new dbconnection\dbconnection();
     $fm = $dbobj->connect();
@@ -874,22 +906,22 @@ $app->get('/api/users/{id}/skills',function(Request $request,Response $response,
 });
 
 //viewmatching jobs
-$app->post('/api/users/{id}/matchingjobs/', function(Request $request, Response $response, array $args)
+$app->get('/api/users/{id}/matchingjobs/', function(Request $request, Response $response, array $args)
 { 
-    // $jwt = new config\jwt();
+    $jwt = new config\jwt();
             
-    //         if( $request->hasHeader("Authorization") == false) {
-    //             $newresponse = $response->withStatus(400);
-    //             return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
-    //         }
-    //         $header = $request->getHeader("Authorization");
-    //         $vars = $header[0];
-    //         $token = json_decode($jwt->jwttokendecryption($vars));
-    //         if( $token->verification == "failed") {
-    //             // header("location: index.html");
-    //             $newresponse = $response->withStatus(401);
-    //             return $newresponse->withJson(["message"=>"you are not authorized"]);
-    //         }
+            if( $request->hasHeader("Authorization") == false) {
+                $newresponse = $response->withStatus(400);
+                return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+            }
+            $header = $request->getHeader("Authorization");
+            $vars = $header[0];
+            $token = json_decode($jwt->jwttokendecryption($vars));
+            if( $token->verification == "failed") {
+                // header("location: index.html");
+                $newresponse = $response->withStatus(401);
+                return $newresponse->withJson(["message"=>"you are not authorized"]);
+            }
     $Id = $args['id'];
     $dbobj = new dbconnection\dbconnection();
     $fm = $dbobj->connect();
@@ -990,6 +1022,49 @@ $app->post('/api/users/{id}/matchingjobs/', function(Request $request, Response 
     return $newresponse->withJson(["success"=>true, "data"=>$fetchedjobdata]);
 });
 
+$app->patch('/api/users/{id}/applications/updatestatus', function(Request $request, Response $response, array $args)
+{ 
+    $jwt = new config\jwt();
+            
+            if( $request->hasHeader("Authorization") == false) {
+                $newresponse = $response->withStatus(400);
+                return $newresponse->withJson(["message"=>"required jwt token is not recieved"]);
+            }
+            $header = $request->getHeader("Authorization");
+            $vars = $header[0];
+            $token = json_decode($jwt->jwttokendecryption($vars));
+            if( $token->verification == "failed") {
+                // header("location: index.html");
+                $newresponse = $response->withStatus(401);
+                return $newresponse->withJson(["message"=>"you are not authorized"]);
+            }
+    $Id = $args['id'];
+    $dbobj = new dbconnection\dbconnection();
+    $fm = $dbobj->connect();
+    $findCommand = $fm->newFindCommand('Application');
+    $findCommand->addFindCriterion('__kf_UserId',$request->getParsedBody()['StudentId']);
+    $findCommand->addFindCriterion('__kf_JobId',$request->getParsedBody()['JobId']);
+    $result = $findCommand->execute();
+    $findCommand = $result->getRecords()[0];
+    $findCommand->setField('Status', $request->getParsedBody()['Status']);
+    $result = $findCommand->commit();
+    if (FileMaker::isError($result)) {
+        if ($result->code = 401) {
+        $findError = 'There are no Records that match that request: '. ' (' .
+        $result->code . ')';
+        } else {
+        $findError = 'Find Error: '. $result->getMessage(). ' (' . $result->code
+        . ')';
+        }
+        $newresponse =  $response->withStatus(404);
+        return $newresponse->withJson(["success"=>false]);
+        } 
+    else{
+        $newresponse = $response->withStatus(200);
+    return $newresponse->withJson(['success'=>true,'message'=>'updated successfully']);
+    }
+
+});
 $app->run();
 
 
