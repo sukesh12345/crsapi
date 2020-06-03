@@ -9,7 +9,11 @@
     "autoload": {
         "classmap": [
             "src/config",
-            "src/lib"
+            "src/lib",
+            "users",
+            "media",
+            "jobs",
+            "valuelists"
         ]
     }
 }

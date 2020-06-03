@@ -48,4 +48,8 @@ return array(
     'PEAR_Error' => $baseDir . '/src/lib/FileMaker/PEAR.php',
     'config\\dbconnection' => $baseDir . '/src/config/connection.php',
     'config\\jwt' => $baseDir . '/src/config/jwt.php',
+    'jobs\\jobsclass' => $baseDir . '/jobs/jobs.php',
+    'media\\media' => $baseDir . '/media/mediafunctions.php',
+    'users\\userclass' => $baseDir . '/users/users.php',
+    'valuelists\\valueclass' => $baseDir . '/valuelists/valuelists.php',
 );

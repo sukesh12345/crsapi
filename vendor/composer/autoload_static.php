@@ -141,6 +141,10 @@ class ComposerStaticInitbf5b84afc74a6c60bbb9cdf351399088
         'PEAR_Error' => __DIR__ . '/../..' . '/src/lib/FileMaker/PEAR.php',
         'config\\dbconnection' => __DIR__ . '/../..' . '/src/config/connection.php',
         'config\\jwt' => __DIR__ . '/../..' . '/src/config/jwt.php',
+        'jobs\\jobsclass' => __DIR__ . '/../..' . '/jobs/jobs.php',
+        'media\\media' => __DIR__ . '/../..' . '/media/mediafunctions.php',
+        'users\\userclass' => __DIR__ . '/../..' . '/users/users.php',
+        'valuelists\\valueclass' => __DIR__ . '/../..' . '/valuelists/valuelists.php',
     );
 
     public static function getInitializer(ClassLoader $loader)
